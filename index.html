@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Path Editor</title>
+    <link rel="stylesheet" href="./js/bootstrap-4.0.0/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: 'Raleway', 'Helvetica', sans-serif;
+            background-color: #222222;
+            margin: 0px;
+            overflow: hidden;
+        }
+    
+        html, body{
+            width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+        }
+
+        #info {
+            color: #808080;
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            z-index: 100;
+            display:block;
+        }
+
+        div.viewer {
+            position: absolute;
+            width:-moz-calc(100% - 300px); width:-webkit-calc(100% - 300px); width: calc(100% - 300px);
+            height: 100%;
+            left: 300px;
+        }
+
+        div.controler {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 300px;
+            height: 100%;
+            padding: 0px;
+            overflow: auto;
+            background-color: rgb(255, 255, 255);
+        }
+
+        div#buttons {
+            padding: 10px;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="controler">
+        <div id="buttons">
+            <button id="record-btn" type="button" class="btn btn-outline-primary">Record</button>
+            <button id="download-btn" type="button" class="btn btn-outline-primary">Download</button>
+        </div>
+        <div id="viewpoints" class="list-group">
+        </div>
+    </div>
+    <div id="container" class="viewer">
+        <div id="info">
+            <div id="status">Loading...</div>
+            <a href="http://threejs.org" target="_blank" rel="noopener">three.js</a> -
+            <a href="https://github.com/KhronosGroup/glTF" target="_blank" rel="noopener">glTF</a> 2.0 loader
+            <br>
+            BoomBox by <a href="https://www.microsoft.com/" target="_blank" rel="noopener">Microsoft</a>
+            </div>
+    </div>
+    <div>
+        <script src="./js/bootstrap-4.0.0/js/jquery-3.2.1.slim.min.js"></script>
+        <script src="./js/bootstrap-4.0.0/js/popper.min.js"></script>
+        <script src="./js/bootstrap-4.0.0/js/bootstrap.bundle.min.js"></script>
+        <script src="./js/three.min.js"></script>
+        <script src="./js/OrbitControls.js"></script>
+        <script src="./js/GLTFLoader.js"></script>
+        <script src="./PathControler.js"></script>
+
+        <script>
+            var orbitControls = null;
+			var container, camera, scene, renderer, loader;
+			var cameraIndex = 0;
+			var cameras = [];
+			var cameraNames = [];
+			var defaultCamera = null;
+			var gltf = null;
+            var url = './model/GTQ.glb'
+            var listEle,viewpoints = [];
+            var currentCamera = 0;
+            var pathControler;
+            onload();
+
+            function onload() {
+				window.addEventListener( 'resize', onWindowResize, false );
+
+                initScene();
+                animate();
+
+			}
+
+            function initScene() {
+
+                container = document.getElementById('container');
+                listEle = document.getElementById('viewpoints');
+
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color( 0x222222 );
+
+                var ambient = new THREE.AmbientLight( 0xaaaaaa );
+                scene.add(ambient);
+
+                defaultCamera = new THREE.PerspectiveCamera( 45, container.offsetWidth / container.offsetHeight, 0.001, 1000 );
+                var staticCamera = new THREE.PerspectiveCamera( 45, container.offsetWidth / container.offsetHeight, 0.001, 1000 );
+                scene.add(defaultCamera);
+                camera = defaultCamera;
+                cameras.push(defaultCamera, staticCamera);
+
+                renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( container.offsetWidth, container.offsetHeight );
+				renderer.gammaOutput = true;
+
+                container.appendChild(renderer.domElement);
+                
+                loader = new THREE.GLTFLoader();
+
+                var loadStartTime = performance.now();
+                var status = document.getElementById("status");
+				status.innerHTML = "Loading...";
+
+                loader.load( url, function(data) {
+					gltf = data;
+					var object = gltf.scene;
+					status.innerHTML = "Load time: " + ( performance.now() - loadStartTime ).toFixed( 2 ) + " ms.";
+					scene.add( object );
+
+                    var bbox = new THREE.Box3().setFromObject(object);
+                    var center = bbox.getCenter();
+                    var viewpoint = new THREE.Vector3(center.x, bbox.max.z * 2.5 * Math.tan(Math.PI * 0.15) + center.y, bbox.max.z * 2.2)
+                    defaultCamera.position.copy(viewpoint);
+                    orbitControls.target.copy(center);
+
+					onWindowResize();
+                    $('#record-btn').on('click', createBox);
+                    $('#download-btn').on('click', downloadJson);
+
+				}, undefined, function ( error ) {
+					console.error( error );
+				} );
+
+                orbitControls = new THREE.OrbitControls(defaultCamera, renderer.domElement);
+                
+            }
+
+            function onWindowResize() {
+
+                for(let i = 0; i < cameras.length; i++) {
+                    var camera = cameras[i];
+                    camera.aspect = container.offsetWidth / container.offsetHeight;
+                    camera.updateProjectionMatrix();
+                }
+
+				renderer.setSize( container.offsetWidth, container.offsetHeight );
+			}
+
+			function animate() {
+                requestAnimationFrame( animate );
+                if(currentCamera === 0)
+                    orbitControls.update();
+                else if(pathControler)
+                    pathControler.update(performance.now());
+				render();
+			}
+
+            function render() {
+				renderer.render( scene, camera );
+			}
+
+            function createBox() {
+                var size = 1;
+                var geometry = new THREE.BoxGeometry( size, size, size );
+                for ( var i = 0; i < geometry.faces.length; i ++ ) {
+                    if(i < 2)
+                        geometry.faces[ i ].color.setRGB( 1, 0, 0 );
+                    else if (i > 3 && i < 6)
+                        geometry.faces[ i ].color.setRGB( 0, 1, 0 );
+                    else if (i > 7 && i < 10)
+                        geometry.faces[ i ].color.setRGB( 0, 0, 1 );
+                }
+
+                var material = new THREE.MeshBasicMaterial( { color: 0xffffff, vertexColors: THREE.FaceColors } );
+                var mesh = new THREE.Mesh( geometry, material ) ;
+                mesh.position.copy(defaultCamera.position);
+                mesh.rotation.copy(defaultCamera.rotation);
+                scene.add( mesh );
+
+                viewpoints.push(mesh);
+                addViewpoint();
+            }
+
+            function addViewpoint() {
+                var a = document.createElement('a');
+                var mesh = viewpoints[viewpoints.length - 1];
+                $('.list-group-item-action.active').removeClass('active');
+                $(a).addClass('list-group-item list-group-item-action active')
+                    .attr('href', '#')
+                    .text('View ' + viewpoints.length)
+                    .on('click', function(){
+                        var self = $(this);
+                        if(self.hasClass('active')) {
+                            switchCamera(0);
+                            $('.list-group-item-action.active').removeClass('active');
+                        } else {
+                            var cameraStatic = switchCamera(1);
+                            cameraStatic.position.copy(mesh.position);
+                            cameraStatic.rotation.copy(mesh.rotation);
+                            $('.list-group-item-action.active').removeClass('active');
+                            $(this).addClass('active');
+                        }
+                    })
+                    .appendTo($(listEle));
+            }
+
+            function switchCamera(index) {
+                currentCamera = index;
+                camera = cameras[index];
+                return cameras[index];
+            }
+
+            function generateJson() {
+                const json = {
+                    positions: [],
+                    rotations: [],
+                    times: [],
+                }
+                for(let i = 0; i < viewpoints.length; i ++) {
+                    let v = viewpoints[i];
+                    json.positions.push(v.position.toArray());
+                    json.rotations.push(v.rotation.toArray());
+                    json.times.push(i);
+                }
+
+                return json;
+            }
+
+            function download(text, name, type) {
+                var a = document.createElement("a");
+                var file = new Blob([text], {type: type});
+                a.href = URL.createObjectURL(file);
+                a.download = name;
+                a.click();
+            }
+
+            function downloadJson() {
+                if(viewpoints.length > 0)
+                    download(JSON.stringify(generateJson()), 'test.json', 'text/plain');
+            }
+
+            function play() {
+                switchCamera(1);
+                pathControler = new THREE.PathControler(cameras[1], generateJson());
+                pathControler.start(performance.now());
+            }
+
+        </script>
+    </div>
+</body>
+</html>
