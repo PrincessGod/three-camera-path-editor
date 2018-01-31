@@ -64,8 +64,9 @@
             <button id="play-btn" type="button" class="btn btn-outline-primary">Play</button>
             <button id="pause-btn" type="button" class="btn btn-outline-primary">Pause</button>
             <button id="continue-btn" type="button" class="btn btn-outline-primary">Continue</button>
+            <input id="files" type="file" accept=".json"/>
         </div>
-        <div id="viewpoints" class="list-group">
+        <div id="viewpoints" class="list-group" accept=".json">
         </div>
     </div>
     <div id="container" class="viewer">
@@ -102,7 +103,23 @@
                 initScene();
                 animate();
 
-			}
+            }
+
+            function handleFileSelect(evt) {
+                var files = evt.target.files; // FileList object
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    var json = JSON.parse(e.target.result);
+                    console.log(json);
+                    viewpoints.forEach(v => scene.remove(v));
+                    viewpoints = [];
+                    $(listEle).text('');
+                    for(let i = 0; i < json.positions.length; i ++) {
+                        createBox(json.positions[i], json.rotations[i], json.times[i]);
+                    }
+                }
+                reader.readAsText(files[0]);
+            }
 
             function initScene() {
 
@@ -188,6 +205,7 @@
                 $('#play-btn').on('click', play);
                 $('#pause-btn').on('click', () => pathControler && pathControler.pause());
                 $('#continue-btn').on('click', () => pathControler && pathControler.continue());
+                $('#files').on('change', handleFileSelect);
             }
 
             function onWindowResize() {
@@ -235,7 +253,7 @@
 				renderer.render( scene, camera );
 			}
 
-            function createBox() {
+            function createBox(position, rotation, time) {
                 var size = 1;
                 var geometry = new THREE.BoxGeometry( size, size, size );
                 for ( var i = 0; i < geometry.faces.length; i ++ ) {
@@ -249,18 +267,22 @@
 
                 var material = new THREE.MeshBasicMaterial( { color: 0xffffff, vertexColors: THREE.FaceColors } );
                 var mesh = new THREE.Mesh( geometry, material ) ;
+                viewpoints.push(mesh);
                 mesh.position.copy(camera.position);
                 mesh.rotation.copy(camera.rotation);
+                mesh.time = (viewpoints.length - 1) * 10;                
+                if (time !== undefined){
+                    mesh.position.fromArray(position);
+                    mesh.rotation.fromArray(rotation);
+                    mesh.time = time;
+                }
                 scene.add( mesh );
-
-                viewpoints.push(mesh);
                 addViewpoint();
             }
 
             function addViewpoint() {
                 var a = document.createElement('a');
                 var mesh = viewpoints[viewpoints.length - 1];
-                mesh.time = (viewpoints.length - 1) * 10;
                 $('.list-group-item-action.active').removeClass('active');
                 $(a).addClass('list-group-item list-group-item-action active')
                     .attr('href', '#')
@@ -271,6 +293,7 @@
                             switchCamera(0);
                             $('.list-group-item-action.active').removeClass('active');
                             options.currentViewport = camera;
+                            updateDefaultCamera();
                         } else {
                             var cameraStatic = switchCamera(1);
                             cameraStatic.position.copy(mesh.position);
@@ -282,6 +305,12 @@
                         }
                     })
                     .appendTo($(listEle));
+            }
+
+            function updateDefaultCamera() {
+                cameras[0].position.copy(cameras[1].position);
+                var vec3 = new THREE.Vector3(cameras[1].matrix.elements[8], cameras[1].matrix.elements[9], cameras[1].matrix.elements[10]).multiplyScalar(2);
+                orbitControls.target.copy(cameras[1].position.sub(vec3))
             }
 
             function switchCamera(index) {
@@ -332,6 +361,7 @@
             options = {
                 currentViewport : viewpoints[0] || camera,
                 updateCamera: true,
+                showViewport: true,
                 update() {
                     for (var i in gui.__controllers) {
                         gui.__controllers[i].updateDisplay();
@@ -377,7 +407,10 @@
 
                 gui.add(viewport, 'time', 0.0);
                 // gui.add(options, 'updateCamera');
-                gui.add(options, 'switchCamera')
+                gui.add(options, 'switchCamera');
+                gui.add(options, 'showViewport').onChange(v => {
+                    viewpoints.forEach(m => m.visible = v);
+                })
                 pf.open();
                 rf.open();
                 // gui.add(options, 'update');
