@@ -36,6 +36,7 @@
 
             start(time) {
                 this.reset();
+                this.isStart = true;
                 this.startTime = time;
             },
 
@@ -48,6 +49,7 @@
             },
 
             reset() {
+                this.isStart = false;
                 this.isPause = false;
                 this.currentTime = 0;
                 this.finishedLoop = 0;
@@ -57,6 +59,7 @@
             },
 
             update(time) {
+                if(!this.isStart) return;
                 if( this.isPause) {
                     this.pauseTime = time - this.startTime - this.currentTime * 1000;
                 } else {
@@ -106,8 +109,17 @@
                         }
                     }
                 }
+            },
 
+            firstView() {
+                this.camera.position.copy(new THREE.Vector3(...this.positions[0]));
+                this.camera.rotation.copy(new THREE.Euler(...this.rotations[0]));
+            },
 
+            lastView() {
+                var idx = this.positions.length - 1;
+                this.camera.position.copy(new THREE.Vector3(...this.positions[idx]));
+                this.camera.rotation.copy(new THREE.Euler(...this.rotations[idx]));
             }
         })
     
